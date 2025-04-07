@@ -52,7 +52,10 @@ def print_ast(code_str) -> None:
 
 def create_virtual_module_from_strings(name, function_strings):
     """Create a virtual module-like object from a list of function strings (without execution)."""
-    source_code = "\n\n".join(function_strings)
+    for index in range(len(function_strings)):
+        fn = function_strings[index]
+        print(f"fn number {index + 1} is : \n {fn}")
+    source_code = "\n\n\n".join(function_strings)
     tree = ast.parse(source_code)
 
     # Create a dummy module object
@@ -112,18 +115,6 @@ def import_student_module(file_path):
 
         for index in range(len(res)):
             s = res[index]
-            if inside_main:
-                main_code += s
-                continue
-            elif inside_stu:
-                stu_info_code += s
-                continue
-            elif inside_binary:
-                binary_code += s
-                continue
-            elif inside_pop:
-                pop_code += s
-                continue
 
 
             if "def" in s:
@@ -133,6 +124,7 @@ def import_student_module(file_path):
                     inside_stu = False
                     inside_binary = False
                     inside_pop = False
+                    continue
 
                 elif "student" in s:
                     stu_info_code += s
@@ -140,19 +132,39 @@ def import_student_module(file_path):
                     inside_stu = True
                     inside_binary = False
                     inside_pop = False
+                    continue
                 elif "binary" in s:
                     binary_code += s
                     inside_main = False
                     inside_stu = False
                     inside_binary = True
                     inside_pop = False
+                    continue
                 elif "population" in s:
                     pop_code += s
                     inside_main = False
                     inside_stu = False
                     inside_binary = False
                     inside_pop = True
+                    continue
 
+            if inside_main:
+                main_code += s
+            elif inside_stu:
+                stu_info_code += s
+            elif inside_binary:
+                binary_code += s
+            elif inside_pop:
+                pop_code += s
+
+        print(f"maincode str is \n {main_code}")
+        print('-' * 50 )
+        print(f"stuinfo str is \n {stu_info_code}")
+        print('-' * 50 )
+        print(f"binary_code str is \n {binary_code}")
+        print('-' * 50 )
+        print(f"pop_code str is \n {pop_code}")
+        print('-' * 50 )
         return create_virtual_module_from_strings("student_module",[main_code, stu_info_code, binary_code, pop_code])
     else:
         print("error in import_student_module")
@@ -286,20 +298,21 @@ def process_project(project_file):
         # Run the project, capture output and handle file movements
         output = capture_output_and_files(module, input_prompts, folder_name)
         
+        
         # Write output to file
         output_path = os.path.join(folder_name, 'output.txt')
         with open(output_path, 'w') as f:
             f.write('\n'.join(output))
         # Move project file to its folder after processing
-        if os.path.exists(project_file):
-            shutil.move(project_file, os.path.join(folder_name, project_file))
-        
-        print(f"Successfully processed {project_file}")
+        #if os.path.exists(project_file):
+        #    shutil.move(project_file, os.path.join(folder_name, project_file))
+        return  
+        #print(f"Successfully processed {project_file}")
         
     except Exception as e:
         print(f"Failed to process {project_file}: {str(e)}")
         traceback.print_exc()
-        
+        return 
         # Even if processing failed, try to create output file with error message
         try:
             if not os.path.exists(folder_name):
