@@ -375,7 +375,7 @@ def capture_output_and_files(module, input_prompts, folder_name):
         final_grade -= points_lost
         deductions.append(f"-{points_lost} for {while_true_count} use(s) of 'while True:'")
 
-    final_grade = max(0, min(100, final_grade))
+    final_grade = max(0,final)
 
     # Write final output
     output_path = os.path.join(folder_name, "grade.txt")
@@ -414,10 +414,9 @@ def process_project(project_file):
         with open(output_path, 'w') as f:
             f.write('\n'.join(output))
         # Move project file to its folder after processing
-        #if os.path.exists(project_file):
-        #    shutil.move(project_file, os.path.join(folder_name, project_file))
-        return  
-        #print(f"Successfully processed {project_file}")
+        if os.path.exists(project_file):
+            shutil.move(project_file, os.path.join(folder_name, project_file))
+        print(f"Successfully processed {project_file}")
         
     except Exception as e:
         print(f"Failed to process {project_file}: {str(e)}")
