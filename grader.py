@@ -14,6 +14,26 @@ import ast
 import types
 
 
+RUBRIC = [
+    {"type": "output", "phrase": "Full Name:", "points": 5, "description": "Student info displayed via show_student_information()"},
+    {"type": "function", "name": "show_student_information", "points": 0, "required": True, "description": "Required function: show_student_information()"},
+    
+    {"type": "code", "check": "meaningful_vars", "points": 5, "description": "Used meaningful variable names"},
+    {"type": "code", "check": "comments", "points": 10, "description": "Clear and detailed comments in code"},
+    
+    {"type": "function", "name": "main", "points": 10, "description": "Implemented and displayed menu in main()"},
+    {"type": "function", "name": "show_roman_binary_number", "points": 5, "description": "Function: show_roman_binary_number() implemented"},
+    {"type": "code", "check": "loop_validation_roman", "points": 5, "description": "Used loop to validate input in roman function"},
+    {"type": "output", "phrase": "Binary Value", "points": 5, "description": "Correct Roman Numeral and Binary output"},
+    
+    {"type": "function", "name": "show_population", "points": 5, "description": "Function: show_population() implemented"},
+    {"type": "code", "check": "population_input_validation", "points": 30, "description": "Correct 3 input validations in population function"},
+    {"type": "output", "phrase": "Day Approximate", "points": 10, "description": "Correct population growth calculation"},
+    {"type": "output", "phrase": "Enter an option:", "points": 10, "description": "Looped back to main menu after valid options"},
+]
+
+
+
 def extract_function_code(file_path, func_name):
     with open(file_path) as f:
         tree = ast.parse(f.read())
@@ -203,13 +223,17 @@ def run_with_timeout(func, args=(), timeout_duration=10):
         
     return result[0] if result else None, None
 
+import os
+import time
+import shutil
+import traceback
+import contextlib
+import builtins
+from io import StringIO
 def capture_output_and_files(module, input_prompts, folder_name):
-    """Capture stdout and handle inputs while running all functions in a SimpleNamespace-based student module"""
     captured_lines = []
     input_idx = 0
     stdout_buffer = StringIO()
-
-    # Get initial state of txt files
     initial_txt_files = set(f for f in os.listdir('.') if f.endswith('.txt'))
 
     def mock_input(prompt=''):
@@ -228,69 +252,144 @@ def capture_output_and_files(module, input_prompts, folder_name):
             captured_lines.append(value)
             input_idx += 1
             return value
-        return '9'  # Default fallback input
+        return '9'
 
     original_input = builtins.input
     builtins.input = mock_input
 
+    final_grade = 100
+    deductions = []
+    awarded_points = []
+    functions_in_ast = set()
+    var_names = set()
+    comment_lines = 0
+    loop_validations = {"roman": False, "population_inputs": 0}
+    while_true_count = 0
+
     try:
         with contextlib.redirect_stdout(stdout_buffer):
-            print(f"module type is {type(module)}")
-            print(f"vars is {vars(module)}")
+            source_code = module.__source__
 
+            # Parse source to AST
+            tree = ast.parse(source_code)
+
+            # Analyze AST
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    functions_in_ast.add(node.name)
+
+                    # Check for loops inside roman validation
+                    if node.name == "show_roman_binary_number":
+                        for subnode in ast.walk(node):
+                            if isinstance(subnode, ast.While) or isinstance(subnode, ast.For):
+                                loop_validations["roman"] = True
+
+                    # Check for 3 validations in show_population
+                    if node.name == "show_population":
+                        for subnode in ast.walk(node):
+                            if isinstance(subnode, ast.While):
+                                loop_validations["population_inputs"] += 1
+
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                    var_names.add(node.id)
+
+                if isinstance(node, ast.While):
+                    # Check for while True specifically
+                    if isinstance(node.test, ast.Constant) and node.test.value is True:
+                        while_true_count += 1
+
+            # Count comments in the source
+            comment_lines = sum(1 for line in source_code.splitlines() if line.strip().startswith("#"))
+
+            # Compile and execute code
             exec_globals = {}
-            functions_run = False
+            compiled_code = compile(source_code, filename="<student_code>", mode="exec")
+            exec(compiled_code, exec_globals)
 
-            # Compile and execute the source code from the namespace
-            try:
-                compiled_code = compile(module.__source__, filename="<student_code>", mode="exec")
-                exec(compiled_code, exec_globals)
+            for name, obj in exec_globals.items():
+                if callable(obj) and not name.startswith("__"):
+                    print(f"Running function: {name}")
+                    try:
+                        result = obj()
+                    except Exception as e:
+                        captured_lines.append(f"Error running {name}: {str(e)}")
+                        captured_lines.append(traceback.format_exc())
 
-                for name, obj in exec_globals.items():
-                    if callable(obj) and not name.startswith("__"):
-                        try:
-                            functions_run = True
-                            print(f"Running function: {name}")
-                            # Use your own run_with_timeout or just call obj() directly if not defined
-                            result = obj()
-                        except Exception as e:
-                            captured_lines.append(f"Error running {name}: {str(e)}")
-                            captured_lines.append(traceback.format_exc())
-            except Exception as e:
-                captured_lines.append(f"Compilation or execution error: {str(e)}")
-                captured_lines.append(traceback.format_exc())
-
-            if not functions_run:
-                captured_lines.append("No callable functions found after executing the source.")
-
-            # Capture any remaining output
             final_output = stdout_buffer.getvalue()
             if final_output:
                 captured_lines.extend(final_output.splitlines())
 
     except Exception as e:
-        captured_lines.append(f"Error occurred: {str(e)}")
+        captured_lines.append(f"Execution error: {str(e)}")
         captured_lines.append(traceback.format_exc())
 
     finally:
         builtins.input = original_input
-
         try:
             time.sleep(1)
             current_txt_files = set(f for f in os.listdir('.') if f.endswith('.txt'))
             new_txt_files = current_txt_files - initial_txt_files - {'input.txt'}
-
             for txt_file in new_txt_files:
-                try:
-                    if os.path.exists(txt_file):
-                        shutil.move(txt_file, os.path.join(folder_name, txt_file))
-                except Exception as e:
-                    captured_lines.append(f"Error moving {txt_file}: {str(e)}")
+                shutil.move(txt_file, os.path.join(folder_name, txt_file))
         except Exception as e:
-            captured_lines.append(f"Error handling files: {str(e)}")
+            captured_lines.append(f"File handling error: {str(e)}")
+
+    # Apply rubric rules
+    for rule in RUBRIC:
+        if rule["type"] == "function":
+            if rule["name"] in functions_in_ast:
+                if rule["points"] > 0:
+                    final_grade += rule["points"]
+                    awarded_points.append(f"+{rule['points']} for {rule['description']}")
+            elif rule.get("required"):
+                deductions.append(f"Missing required function: {rule['name']}")
+                final_grade = 0  # zero score if required function is missing
+        elif rule["type"] == "code":
+            check = rule["check"]
+            if check == "meaningful_vars":
+                if all(len(name) > 2 and name.islower() for name in var_names):
+                    final_grade += rule["points"]
+                    awarded_points.append(f"+{rule['points']} for {rule['description']}")
+            elif check == "comments":
+                if comment_lines >= 3:
+                    final_grade += rule["points"]
+                    awarded_points.append(f"+{rule['points']} for {rule['description']}")
+            elif check == "loop_validation_roman":
+                if loop_validations["roman"]:
+                    final_grade += rule["points"]
+                    awarded_points.append(f"+{rule['points']} for {rule['description']}")
+            elif check == "population_input_validation":
+                if loop_validations["population_inputs"] >= 3:
+                    final_grade += rule["points"]
+                    awarded_points.append(f"+{rule['points']} for {rule['description']}")
+        elif rule["type"] == "output":
+            if any(rule["phrase"] in line for line in captured_lines):
+                final_grade += rule["points"]
+                awarded_points.append(f"+{rule['points']} for {rule['description']}")
+            else:
+                deductions.append(f"-{rule['points']} for missing: {rule['description']}")
+
+    # Deduct for unsafe while True use
+    if while_true_count > 0:
+        points_lost = while_true_count * 10
+        final_grade -= points_lost
+        deductions.append(f"-{points_lost} for {while_true_count} use(s) of 'while True:'")
+
+    final_grade = max(0, min(100, final_grade))
+
+    # Write final output
+    output_path = os.path.join(folder_name, "grade.txt")
+    with open(output_path, "w", encoding="utf-8") as f:
+        for line in captured_lines:
+            f.write(line + "\n")
+        f.write("\n\n--- GRADING SUMMARY ---\n")
+        for line in awarded_points:
+            f.write(line + "\n")
+        for line in deductions:
+            f.write(line + "\n")
+        f.write(f"\nFinal Grade: {final_grade}/100\n")
 
     return captured_lines
-
 
 def process_project(project_file):
     """Process a single project file"""
