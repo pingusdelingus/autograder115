@@ -165,7 +165,7 @@ def import_student_module(file_path):
         print('-' * 50 )
         print(f"pop_code str is \n {pop_code}")
         print('-' * 50 )
-        return create_virtual_module_from_strings("student_module",[main_code, stu_info_code, binary_code, pop_code])
+        return create_virtual_module_from_strings("main",[main_code, stu_info_code, binary_code, pop_code])
     else:
         print("error in import_student_module")
         return None
@@ -204,72 +204,82 @@ def run_with_timeout(func, args=(), timeout_duration=10):
     return result[0] if result else None, None
 
 def capture_output_and_files(module, input_prompts, folder_name):
-    """Capture stdout and handle inputs while running the main function"""
+    """Capture stdout and handle inputs while running all functions in a SimpleNamespace-based student module"""
     captured_lines = []
     input_idx = 0
     stdout_buffer = StringIO()
-    
+
     # Get initial state of txt files
     initial_txt_files = set(f for f in os.listdir('.') if f.endswith('.txt'))
-    
+
     def mock_input(prompt=''):
         nonlocal input_idx
-        
-        # Flush any pending output from stdout_buffer
         stdout_content = stdout_buffer.getvalue()
         if stdout_content:
             captured_lines.extend(stdout_content.splitlines())
             stdout_buffer.seek(0)
             stdout_buffer.truncate()
-            
+
         if prompt:
             captured_lines.append(prompt.rstrip())
-        
+
         if input_idx < len(input_prompts):
             value = input_prompts[input_idx]
             captured_lines.append(value)
             input_idx += 1
             return value
-        return '9'
-
-
-
+        return '9'  # Default fallback input
 
     original_input = builtins.input
     builtins.input = mock_input
-    
+
     try:
         with contextlib.redirect_stdout(stdout_buffer):
-            if hasattr(module, 'main'):
-                # Run the main function with timeout
-                _, error = run_with_timeout(module.main)
-                if error:
-                    captured_lines.extend(error)
-            else:
+            print(f"module type is {type(module)}")
+            print(f"vars is {vars(module)}")
 
-                captured_lines.append("Error: No main() function found in student's code")
-            
+            exec_globals = {}
+            functions_run = False
+
+            # Compile and execute the source code from the namespace
+            try:
+                compiled_code = compile(module.__source__, filename="<student_code>", mode="exec")
+                exec(compiled_code, exec_globals)
+
+                for name, obj in exec_globals.items():
+                    if callable(obj) and not name.startswith("__"):
+                        try:
+                            functions_run = True
+                            print(f"Running function: {name}")
+                            # Use your own run_with_timeout or just call obj() directly if not defined
+                            result = obj()
+                        except Exception as e:
+                            captured_lines.append(f"Error running {name}: {str(e)}")
+                            captured_lines.append(traceback.format_exc())
+            except Exception as e:
+                captured_lines.append(f"Compilation or execution error: {str(e)}")
+                captured_lines.append(traceback.format_exc())
+
+            if not functions_run:
+                captured_lines.append("No callable functions found after executing the source.")
+
             # Capture any remaining output
             final_output = stdout_buffer.getvalue()
             if final_output:
                 captured_lines.extend(final_output.splitlines())
-    
+
     except Exception as e:
         captured_lines.append(f"Error occurred: {str(e)}")
         captured_lines.append(traceback.format_exc())
+
     finally:
         builtins.input = original_input
-        
-        # Handle file operations even if there was an error
+
         try:
-            # Give time for any file operations to complete
             time.sleep(1)
-            
-            # Find new txt files
             current_txt_files = set(f for f in os.listdir('.') if f.endswith('.txt'))
             new_txt_files = current_txt_files - initial_txt_files - {'input.txt'}
-            
-            # Move new txt files to project folder
+
             for txt_file in new_txt_files:
                 try:
                     if os.path.exists(txt_file):
@@ -278,8 +288,9 @@ def capture_output_and_files(module, input_prompts, folder_name):
                     captured_lines.append(f"Error moving {txt_file}: {str(e)}")
         except Exception as e:
             captured_lines.append(f"Error handling files: {str(e)}")
-    
+
     return captured_lines
+
 
 def process_project(project_file):
     """Process a single project file"""
